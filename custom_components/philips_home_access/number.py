@@ -1,9 +1,13 @@
 from homeassistant.components.number import NumberEntity
 from .const import DOMAIN
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     api = hass.data[DOMAIN][entry.entry_id]
     devices = await hass.async_add_executor_job(api.get_devices)
+    _LOGGER.debug("number: setting up %s auto-lock delay entities", len(devices))
     async_add_entities([PhilipsAutoLockTime(api, d) for d in devices])
     hass.data[DOMAIN].setdefault("autolock_enabled", {})
     hass.data[DOMAIN]["autolock_enabled"].setdefault(entry.entry_id, {})
@@ -35,14 +39,24 @@ class PhilipsAutoLockTime(NumberEntity):
         return self._attr_available
 
     async def async_set_native_value(self, value):
-        await self.hass.async_add_executor_job(self._api.set_auto_lock_time, self._esn, int(value))
+        _LOGGER.info("number: setting auto-lock delay for esn=%s to %s", self._esn, int(value))
+        resp = await self.hass.async_add_executor_job(self._api.set_auto_lock_time, self._esn, int(value))
+        _LOGGER.debug("number: set auto-lock delay response for esn=%s: %s", self._esn, resp)
         self._attr_native_value = value
         self.async_write_ha_state()
 
     async def async_update(self):
+        _LOGGER.debug("number: refreshing delay state for esn=%s", self._esn)
         devices = await self.hass.async_add_executor_job(self._api.get_devices)
         for d in devices:
             if d["wifiSN"] == self._esn:
                 self._attr_native_value = d.get("autoLockTime")
                 self._attr_available = (d.get("amMode") == 0)
+                _LOGGER.debug(
+                    "number: refreshed esn=%s autoLockTime=%s amMode=%s available=%s",
+                    self._esn,
+                    self._attr_native_value,
+                    d.get("amMode"),
+                    self._attr_available,
+                )
                 break

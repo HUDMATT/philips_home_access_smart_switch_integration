@@ -1,7 +1,9 @@
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.helpers import entity_registry as er
-
+import logging
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     hass.data[DOMAIN].setdefault(entry.entry_id, {})
@@ -9,6 +11,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     hass.data[DOMAIN]["autolock_enabled"].setdefault(entry.entry_id, {})
     api = hass.data[DOMAIN][entry.entry_id]
     devices = await hass.async_add_executor_job(api.get_devices)
+    _LOGGER.debug("switch: setting up %s auto-lock switch entities", len(devices))
     async_add_entities([PhilipsAutoLockSwitch(api, d) for d in devices])
 
 class PhilipsAutoLockSwitch(SwitchEntity):
@@ -21,14 +24,18 @@ class PhilipsAutoLockSwitch(SwitchEntity):
         self._attr_device_info = {"identifiers": {(DOMAIN, self._esn)}}
 
     async def async_turn_on(self, **kwargs):
-        await self.hass.async_add_executor_job(self._api.set_auto_lock_mode, self._esn, True)
+        _LOGGER.debug("switch: enabling auto-lock for esn=%s", self._esn)
+        resp = await self.hass.async_add_executor_job(self._api.set_auto_lock_mode, self._esn, True)
+        _LOGGER.debug("switch: enable response for esn=%s: %s", self._esn, resp)
         self._attr_is_on = True
         self.hass.data[DOMAIN]["autolock_enabled"][self.platform.config_entry.entry_id][self._esn] = True
         self.async_write_ha_state()
         await self.async_update_related_entities()
 
     async def async_turn_off(self, **kwargs):
-        await self.hass.async_add_executor_job(self._api.set_auto_lock_mode, self._esn, False)
+        _LOGGER.debug("switch: disabling auto-lock for esn=%s", self._esn)
+        resp = await self.hass.async_add_executor_job(self._api.set_auto_lock_mode, self._esn, False)
+        _LOGGER.debug("switch: disable response for esn=%s: %s", self._esn, resp)
         self._attr_is_on = False
         self.hass.data[DOMAIN]["autolock_enabled"][self.platform.config_entry.entry_id][self._esn] = False
         self.async_write_ha_state()
@@ -41,7 +48,9 @@ class PhilipsAutoLockSwitch(SwitchEntity):
         number_entity_id = registry.async_get_entity_id("number", DOMAIN, number_unique_id)
         if not number_entity_id:
             return
-
+        
+        _LOGGER.debug("switch: requesting update_entity for %s", number_entity_id)
+        
         await self.hass.services.async_call(
             "homeassistant",
             "update_entity",

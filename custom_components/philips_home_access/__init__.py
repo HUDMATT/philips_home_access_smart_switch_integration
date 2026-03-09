@@ -48,6 +48,9 @@ async def async_setup(hass, config):
 async def async_setup_entry(hass, entry):
     from .api import PhilipsHomeAccessAPI
     from homeassistant.exceptions import ConfigEntryAuthFailed
+    
+    _LOGGER.warning("PHILIPS_HOME_ACCESS startup test loaded")
+    _LOGGER.debug("Setting up entry %s for username=%s region=%s", entry.entry_id, entry.data.get("username"), entry.data.get("region"))
 
     api = PhilipsHomeAccessAPI(
         entry.data["username"],
@@ -59,11 +62,14 @@ async def async_setup_entry(hass, entry):
     hass.data[DOMAIN][entry.entry_id] = api
 
     if hass.data.get(DOMAIN, {}).get(f"{entry.entry_id}_auth_invalid"):
+        _LOGGER.debug("Entry %s marked auth_invalid before setup", entry.entry_id)
         raise ConfigEntryAuthFailed("Philips Home Access needs re-authentication")
 
     try:
         await hass.async_add_executor_job(api.login)
+        _LOGGER.debug("Initial login succeeded for entry %s", entry.entry_id)
     except Exception as err:
+        _LOGGER.debug("Initial login failed for entry %s: %r", entry.entry_id, err)
         raise ConfigEntryAuthFailed(
             "Philips Home Access authentication failed. Please reconfigure."
         ) from err
@@ -71,24 +77,28 @@ async def async_setup_entry(hass, entry):
     clear_auth_issue(hass, entry)
     hass.data[DOMAIN][f"{entry.entry_id}_auth_invalid"] = False
 
+    _LOGGER.debug("Forwarding entry %s to platforms: %s", entry.entry_id, PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    clear_auth_issue(hass, entry)
-    hass.data[DOMAIN][f"{entry.entry_id}_auth_invalid"] = False
 
     async def _auth_watchdog(now):
         try:
+            _LOGGER.debug("Auth watchdog running for entry %s", entry.entry_id)
             devices = await hass.async_add_executor_job(api.get_devices)
+            _LOGGER.debug("Auth watchdog device count for entry %s: %s", entry.entry_id, len(devices))
+
             if not devices:
                 return
 
             esn = devices[0].get("wifiSN")
             if not esn:
+                _LOGGER.debug("Auth watchdog found first device without wifiSN")
                 return
 
             resp = await hass.async_add_executor_job(api.query_device_attr, esn)
+            _LOGGER.debug("Auth watchdog attr query response code=%s", resp.get("code") if isinstance(resp, dict) else None)
 
             if isinstance(resp, dict) and str(resp.get("code")) == "444":
+                _LOGGER.debug("Auth watchdog detected expired session for entry %s", entry.entry_id)
                 hass.data[DOMAIN][f"{entry.entry_id}_auth_invalid"] = True
                 create_auth_issue(hass, entry)
                 await hass.config_entries.async_reload(entry.entry_id)
