@@ -12,7 +12,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     api = hass.data[DOMAIN][entry.entry_id]
     devices = await hass.async_add_executor_job(api.get_devices)
     _LOGGER.debug("switch: setting up %s auto-lock switch entities", len(devices))
-    async_add_entities([PhilipsAutoLockSwitch(api, d) for d in devices])
+    lock_devices = [d for d in devices if d.get("deviceType") == "LOCK"]
+    async_add_entities([PhilipsAutoLockSwitch(api, d) for d in lock_devices])
 
 class PhilipsAutoLockSwitch(SwitchEntity):
     def __init__(self, api, device):

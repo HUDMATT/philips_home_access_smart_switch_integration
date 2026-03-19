@@ -25,6 +25,51 @@ class PhilipsHomeAccessAPI:
         if len(value) <= keep:
             return "*" * len(value)
         return f"{value[:keep]}***"
+    
+    def _find_device(self, devices, wifi_sn):
+        for device in devices:
+            if device.get("wifiSN") == wifi_sn:
+                return device
+        return None
+
+    def _normalize_mac(self, mac: str) -> str:
+        if not mac:
+            return ""
+        return str(mac).replace(" ", "").upper()
+
+    def _get_lock_transport_info(self, lock_esn):
+        """Return transport details for a lock.
+
+        Result:
+        {
+            "mode": "direct" | "gateway",
+            "lock": <lock device dict>,
+            "gateway": <gateway device dict or None>,
+        }
+        """
+        devices = self.get_devices()
+        lock = self._find_device(devices, lock_esn)
+        if not lock:
+            raise Exception(f"lock_not_found:{lock_esn}")
+
+        if lock.get("deviceType") != "LOCK":
+            raise Exception(f"device_not_lock:{lock_esn}")
+
+        master_sn = lock.get("masterSn")
+        if master_sn:
+            gateway = self._find_device(devices, master_sn)
+            if gateway and gateway.get("deviceType") == "GATEWAY":
+                return {
+                    "mode": "gateway",
+                    "lock": lock,
+                    "gateway": gateway,
+                }
+
+        return {
+            "mode": "direct",
+            "lock": lock,
+            "gateway": None,
+        }
 
     def login(self):
         url = "https://user-oneness.juziwulian.com/homeaccess/oauth/login"
@@ -248,7 +293,7 @@ class PhilipsHomeAccessAPI:
         from Crypto.Hash import SHA256
         from Crypto.Signature import pkcs1_15
 
-        url = f"https://api.idlespacetech.com/v3/device/{'close' if lock_it else 'open'}-device"
+        transport = self._get_lock_transport_info(esn)
         current_time_ms = int(time.time() * 1000)
 
         headers = {
@@ -265,11 +310,22 @@ class PhilipsHomeAccessAPI:
             "Content-Type": "application/json",
         }
 
-        payload_to_sign = {
-            "esn": esn,
-            "userNumberId": 0,
-            "reqTime": str(current_time_ms),
-        }
+        if transport["mode"] == "gateway":
+            url = f"https://api.idlespacetech.com/v3/gateway/set-lock-{'close' if lock_it else 'open'}"
+            payload_to_sign = {
+                "esn": transport["gateway"]["wifiSN"],   # bridge serial
+                "mac": self._normalize_mac(transport["lock"].get("mac", "")),
+                "masterSn": transport["lock"]["wifiSN"], # lock serial
+                "userNumberId": 0,
+                "reqTime": str(current_time_ms),
+            }
+        else:
+            url = f"https://api.idlespacetech.com/v3/device/{'close' if lock_it else 'open'}-device"
+            payload_to_sign = {
+                "esn": esn,
+                "userNumberId": 0,
+                "reqTime": str(current_time_ms),
+            }
 
         canonical_str = json.dumps(payload_to_sign, separators=(",", ":"), sort_keys=True)
 
@@ -289,7 +345,13 @@ class PhilipsHomeAccessAPI:
 
         body = {"encryptData": base64.b64encode(b"".join(encrypted_chunks)).decode()}
 
-        _LOGGER.debug("set_lock_state start: esn=%s lock_it=%s", self._mask(esn), lock_it)
+        _LOGGER.debug(
+            "set_lock_state start: esn=%s lock_it=%s mode=%s url=%s",
+            self._mask(esn),
+            lock_it,
+            transport["mode"],
+            url,
+        )
 
         resp = requests.post(url, headers=headers, json=body, timeout=10)
 

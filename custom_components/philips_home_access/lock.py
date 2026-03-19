@@ -10,7 +10,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     api = hass.data[DOMAIN][entry.entry_id]
     devices = await hass.async_add_executor_job(api.get_devices)
 
-    async_add_entities([PhilipsHomeAccessLock(api, device) for device in devices], update_before_add=True)
+    lock_devices = [device for device in devices if device.get("deviceType") == "LOCK"]
+    async_add_entities([PhilipsHomeAccessLock(api, device) for device in lock_devices], update_before_add=True)
 
 class PhilipsHomeAccessLock(LockEntity):
     _attr_should_poll = True
@@ -25,6 +26,14 @@ class PhilipsHomeAccessLock(LockEntity):
         self._attr_unique_id = f"philips_{self._esn}_lock"
         self._attr_is_locked = None
         self._attr_available = True
+
+        _LOGGER.debug(
+            "lock entity setup: name=%s esn=%s masterSn=%s deviceType=%s",
+            self._attr_name,
+            self._esn,
+            device_data.get("masterSn"),
+            device_data.get("deviceType"),
+        )
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._esn)},
