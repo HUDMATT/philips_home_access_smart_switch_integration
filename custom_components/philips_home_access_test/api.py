@@ -350,59 +350,101 @@ class PhilipsHomeAccessAPI:
         return out
 
     def set_gateway_power_status(self, esn, enabled):
-        url = "https://api.idlespacetech.com/v4/device/set-device-attr"
         status = 1 if enabled else 0
+        candidates = [
+            (
+                "https://api.idlespacetech.com/v3/api/device/set-gw-power-status",
+                "gwPowerStatus",
+            ),
+            (
+                "https://api.idlespacetech.com/v3/api/device/set-gateway-power-status",
+                "gwPowerStatus",
+            ),
+            (
+                "https://api.idlespacetech.com/v3/gateway/set-gw-power-status",
+                "gwPowerStatus",
+            ),
+            (
+                "https://api.idlespacetech.com/v3/gateway/set-power-status",
+                "gwPowerStatus",
+            ),
+            (
+                "https://api.idlespacetech.com/v4/device/set-gw-power-status",
+                "gwPowerStatus",
+            ),
+            (
+                "https://api.idlespacetech.com/v4/gateway/set-gw-power-status",
+                "gwPowerStatus",
+            ),
+            (
+                "https://api.idlespacetech.com/v3/api/device/set-power-status",
+                "powerStatus",
+            ),
+            (
+                "https://api.idlespacetech.com/v3/gateway/set-power-status",
+                "powerStatus",
+            ),
+            (
+                "https://api.idlespacetech.com/v4/device/set-power-status",
+                "powerStatus",
+            ),
+        ]
 
-        payload = {
-            "esn": esn,
-            "gwPowerStatus": status,
-            "reqTime": str(int(time.time() * 1000)),
-        }
-        payload["sign"] = self._sign(payload)
+        last_out = None
+        for url, status_key in candidates:
+            req_time = str(int(time.time() * 1000))
+            payload = {
+                "esn": esn,
+                status_key: status,
+                "reqTime": req_time,
+            }
+            payload["sign"] = self._sign(payload)
 
-        headers = {
-            "token": self.token,
-            "k-tenant": "philips",
-            "k-version": "4.11.0",
-            "k-language": "en_US",
-            "k-signv": "1.0.0",
-            "reqSource": "app",
-            "lang": "en_US",
-            "language": "en_US",
-            "timestamp": payload["reqTime"],
-            "Content-Type": "application/json",
-        }
-
-        _LOGGER.warning(
-            "TEMP set_gateway_power_status start: esn=%s enabled=%s gwPowerStatus=%s url=%s",
-            self._mask(esn),
-            enabled,
-            status,
-            url,
-        )
-
-        resp = requests.post(url, headers=headers, json=payload, timeout=10)
-        try:
-            out = resp.json()
-        except Exception:
-            _LOGGER.warning(
-                "TEMP set_gateway_power_status returned non-JSON response: http_status=%s text=%s",
-                resp.status_code,
-                resp.text[:500],
-            )
-            return {
-                "code": resp.status_code,
-                "msg": "non_json_response",
-                "text": resp.text[:500],
+            headers = {
+                "token": self.token,
+                "k-tenant": "philips",
+                "k-version": "4.11.0",
+                "k-language": "en_US",
+                "k-signv": "1.0.0",
+                "reqSource": "app",
+                "lang": "en_US",
+                "language": "en_US",
+                "timestamp": req_time,
+                "Content-Type": "application/json",
             }
 
-        if isinstance(out, dict):
-            out["_http_status"] = resp.status_code
             _LOGGER.warning(
-                "TEMP set_gateway_power_status response: %s",
+                "TEMP gateway power endpoint probe: esn=%s enabled=%s %s=%s url=%s",
+                self._mask(esn),
+                enabled,
+                status_key,
+                status,
+                url,
+            )
+
+            resp = requests.post(url, headers=headers, json=payload, timeout=10)
+            try:
+                out = resp.json()
+            except Exception:
+                out = {
+                    "code": resp.status_code,
+                    "msg": "non_json_response",
+                    "text": resp.text[:500],
+                }
+
+            if isinstance(out, dict):
+                out["_http_status"] = resp.status_code
+            last_out = out
+
+            _LOGGER.warning(
+                "TEMP gateway power endpoint probe response: %s",
                 json.dumps(self._redact_for_log(out), indent=2, sort_keys=True),
             )
-        return out
+
+            if isinstance(out, dict) and out.get("code") == 200:
+                return out
+
+        return last_out
 
     def set_lock_state(self, esn, lock_it):
         from Crypto.PublicKey import RSA
