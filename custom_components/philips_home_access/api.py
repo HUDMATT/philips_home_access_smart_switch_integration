@@ -158,6 +158,14 @@ class PhilipsHomeAccessAPI:
             raise
 
         devices = data.get("data", {}).get("wifiList", [])
+
+        # Temporary debugging for identifying unsupported Philips Home Access devices.
+        for device in devices:
+            _LOGGER.debug(
+                "Raw Philips Home Access wifiList device: %s",
+                json.dumps(device, indent=2, sort_keys=True),
+            )
+
         _LOGGER.debug(
             "get_devices response code=%s device_count=%s",
             data.get("code"),
