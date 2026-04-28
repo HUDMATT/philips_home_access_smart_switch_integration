@@ -25,6 +25,43 @@ class PhilipsHomeAccessAPI:
         if len(value) <= keep:
             return "*" * len(value)
         return f"{value[:keep]}***"
+
+    def _redact_device_for_log(self, device):
+        return self._redact_for_log(device)
+
+    def _redact_for_log(self, value):
+        sensitive_keys = {
+            "adminName",
+            "adminPwd",
+            "adminUid",
+            "bleMac",
+            "ip",
+            "password1",
+            "password2",
+            "peripheralId",
+            "uname",
+            "userNickname",
+            "wifiName",
+            "wifiSN",
+            "masterSn",
+            "mac",
+            "uid",
+            "userId",
+            "token",
+            "credential",
+            "password",
+        }
+
+        if isinstance(value, dict):
+            return {
+                key: self._mask(item) if key in sensitive_keys else self._redact_for_log(item)
+                for key, item in value.items()
+            }
+
+        if isinstance(value, list):
+            return [self._redact_for_log(item) for item in value]
+
+        return value
     
     def _find_device(self, devices, wifi_sn):
         for device in devices:
@@ -160,11 +197,25 @@ class PhilipsHomeAccessAPI:
         devices = data.get("data", {}).get("wifiList", [])
 
         # Temporary debugging for identifying unsupported Philips Home Access devices.
+        # This intentionally logs at warning level so it appears in the HA log UI.
         for device in devices:
-            _LOGGER.debug(
-                "Raw Philips Home Access wifiList device: %s",
-                json.dumps(device, indent=2, sort_keys=True),
+            _LOGGER.warning(
+                "TEMP Philips Home Access wifiList device: %s",
+                json.dumps(self._redact_device_for_log(device), indent=2, sort_keys=True),
             )
+            if device.get("deviceType") == "GATEWAY" and device.get("wifiSN"):
+                try:
+                    attr = self.query_device_attr(device["wifiSN"])
+                    _LOGGER.warning(
+                        "TEMP Philips Home Access gateway attr response: %s",
+                        json.dumps(self._redact_for_log(attr), indent=2, sort_keys=True),
+                    )
+                except Exception as err:
+                    _LOGGER.warning(
+                        "TEMP Philips Home Access gateway attr query failed for esn=%s: %r",
+                        self._mask(device.get("wifiSN")),
+                        err,
+                    )
 
         _LOGGER.debug(
             "get_devices response code=%s device_count=%s",
