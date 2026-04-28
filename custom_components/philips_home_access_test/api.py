@@ -349,6 +349,61 @@ class PhilipsHomeAccessAPI:
         )
         return out
 
+    def set_gateway_power_status(self, esn, enabled):
+        url = "https://api.idlespacetech.com/v4/device/set-device-attr"
+        status = 1 if enabled else 0
+
+        payload = {
+            "esn": esn,
+            "gwPowerStatus": status,
+            "reqTime": str(int(time.time() * 1000)),
+        }
+        payload["sign"] = self._sign(payload)
+
+        headers = {
+            "token": self.token,
+            "k-tenant": "philips",
+            "k-version": "4.11.0",
+            "k-language": "en_US",
+            "k-signv": "1.0.0",
+            "reqSource": "app",
+            "lang": "en_US",
+            "language": "en_US",
+            "timestamp": payload["reqTime"],
+            "Content-Type": "application/json",
+        }
+
+        _LOGGER.warning(
+            "TEMP set_gateway_power_status start: esn=%s enabled=%s gwPowerStatus=%s url=%s",
+            self._mask(esn),
+            enabled,
+            status,
+            url,
+        )
+
+        resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        try:
+            out = resp.json()
+        except Exception:
+            _LOGGER.warning(
+                "TEMP set_gateway_power_status returned non-JSON response: http_status=%s text=%s",
+                resp.status_code,
+                resp.text[:500],
+            )
+            return {
+                "code": resp.status_code,
+                "msg": "non_json_response",
+                "text": resp.text[:500],
+            }
+
+        if isinstance(out, dict):
+            out["_http_status"] = resp.status_code
+            _LOGGER.warning(
+                "TEMP set_gateway_power_status response: %s",
+                json.dumps(self._redact_for_log(out), indent=2, sort_keys=True),
+            )
+        return out
+
     def set_lock_state(self, esn, lock_it):
         from Crypto.PublicKey import RSA
         from Crypto.Cipher import PKCS1_v1_5
