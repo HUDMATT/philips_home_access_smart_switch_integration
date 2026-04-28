@@ -44,7 +44,7 @@ Let me know if your lock works or help me add support it.
 
 ### Option 2: Manual installation
 
-1. Copy the folder: custom_components/philips_home_access
+1. Copy the folder: custom_components/philips_home_access_test
 2. Restart Home Assistant
 
 ---
@@ -103,7 +103,7 @@ Add to `configuration.yaml`:
 ```
 logger:
   logs:
-    custom_components.philips_home_access: debug
+    custom_components.philips_home_access_test: debug
 ```
 
 ## Support
